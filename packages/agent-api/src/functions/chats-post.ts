@@ -151,8 +151,7 @@ export async function postChats(request: HttpRequest, context: InvocationContext
       try {
         if (content) {
           // When no content is generated, do not update the history as it's likely an error
-          await chatHistory.addMessage(new HumanMessage(question));
-          await chatHistory.addMessage(new AIMessage(content));
+          await chatHistory.addMessages([new HumanMessage(question), new AIMessage(content)]);
           context.log('Chat history updated successfully');
 
           // Ensure the session title has finished generating
