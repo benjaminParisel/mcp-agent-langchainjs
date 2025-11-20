@@ -23,12 +23,7 @@ services:
     # Needed to get the BURGER_API_URL env var set
     hooks:
       predeploy:
-        windows:
-          shell: pwsh
-          run: npm run build
-        posix:
-          shell: sh
-          run: npm run build
+        run: npm run build
 
   agent-api:
     project: ./packages/agent-api
@@ -43,16 +38,6 @@ services:
 
 hooks:
   postprovision:
-    windows:
-      shell: pwsh
-      run: azd env get-values > .env
-    posix:
-      shell: sh
-      run: azd env get-values > .env
+    run: azd env get-values > .env
   postup:
-    windows:
-      shell: pwsh
-      run: npm run -s env
-    posix:
-      shell: sh
-      run: npm run -s env
+    run: npm run -s env
