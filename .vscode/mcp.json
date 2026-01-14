@@ -1,0 +1,16 @@
+{
+  "servers": {
+    "burger-mcp": {
+      "type": "http",
+      "url": "http://localhost:3000/mcp"
+    }
+
+// "servers": {
+//     "burger-mcp": {
+//       "type": "stdio",
+//       "command": "npm",
+//       "args": ["run", "start:local", "--workspace=burger-mcp"]
+//     }
+//   }
+  }
+}
