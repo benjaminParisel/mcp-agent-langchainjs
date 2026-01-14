@@ -1,17 +1,13 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { burgerApiUrl } from './config.js';
-import { Server } from 'node:http';
 
 export function getMcpServer() {
   const server = new McpServer({
     name: 'burger-mcp',
     version: '1.0.0',
-    title: 'Burger MCP',
-    description: 'MCP for Burger API',
   });
 
-  // Get the list of available burgers
   // Get the list of available burgers
   server.registerTool(
     'get_burgers',
@@ -39,17 +35,22 @@ export function getMcpServer() {
       }),
   );
 
+  // Get the list of available toppings
   server.registerTool(
     'get_toppings',
     {
-      description: 'Get a list of all available toppings',
+      description: 'Get a list of all toppings in the menu',
+      inputSchema: z.object({
+        category: z.string().optional().describe('Category of toppings to filter by (can be empty)'),
+      }),
     },
-    async () =>
+    async (args) =>
       createToolResponse(async () => {
-        return fetchBurgerApi('/api/toppings');
+        return fetchBurgerApi(`/api/toppings?category=${args.category ?? ''}`);
       }),
   );
 
+  // Get a specific topping by its ID
   server.registerTool(
     'get_topping_by_id',
     {
@@ -64,29 +65,48 @@ export function getMcpServer() {
       }),
   );
 
+  // Get a list of all topping categories
   server.registerTool(
     'get_topping_categories',
     {
-      description: 'Get all topping categories',
+      description: 'Get a list of all topping categories',
     },
-    async (args) =>
+    async () =>
       createToolResponse(async () => {
         return fetchBurgerApi('/api/toppings/categories');
       }),
   );
 
-  server.registerTool('get_orders', { description: 'Get all orders' }, async (args) =>
-    createToolResponse(async () => {
-      return fetchBurgerApi(`/api/orders`);
-    }),
+  // Get a list of orders in the system
+  server.registerTool(
+    'get_orders',
+    {
+      description: 'Get a list of orders in the system',
+      inputSchema: z.object({
+        userId: z.string().optional().describe('Filter orders by user ID'),
+        status: z.string().optional().describe('Filter by order status. Comma-separated list allowed.'),
+        last: z.string().optional().describe("Filter orders created in the last X minutes or hours (e.g. '60m', '2h')"),
+      }),
+    },
+    async (args) =>
+      createToolResponse(async () => {
+        const parameters = new URLSearchParams();
+        if (args.userId) parameters.append('userId', args.userId);
+        if (args.status) parameters.append('status', args.status);
+        if (args.last) parameters.append('last', args.last);
+        const query = parameters.toString();
+        const url = query ? `/api/orders?${query}` : '/api/orders';
+        return fetchBurgerApi(url);
+      }),
   );
 
+  // Get a specific order by its ID
   server.registerTool(
     'get_order_by_id',
     {
-      description: 'Get order by its ID',
+      description: 'Get a specific order by its ID',
       inputSchema: z.object({
-        id: z.string().describe('ID of the topping to retrieve'),
+        id: z.string().describe('ID of the order to retrieve'),
       }),
     },
     async (args) =>
@@ -95,20 +115,23 @@ export function getMcpServer() {
       }),
   );
 
+  // Place order
   server.registerTool(
     'place_order',
     {
-      description: 'Place a new order',
+      description: 'Place a new order with burgers (requires userId)',
       inputSchema: z.object({
-        userId: z.string().describe('Id of user placing the order'),
-        nickname: z.string().describe('Nickname of the user placing the order').optional,
+        userId: z.string().describe('ID of the user placing the order'),
+        nickname: z.string().optional().describe('Optional nickname for the order (only first 10 chars displayed)'),
         items: z
-          .object({
-            burgerId: z.string().describe('ID of the burger to order'),
-            quantity: z.number().describe('Quantity of the burger to order'),
-            extraToppingIds: z.array(z.string()).describe('List of extra topping IDs to add to the burger').optional,
-          })
-          .array()
+          .array(
+            z.object({
+              burgerId: z.string().describe('ID of the burger'),
+              quantity: z.number().min(1).describe('Quantity of the burger'),
+              extraToppingIds: z.array(z.string()).describe('List of extra topping IDs'),
+            }),
+          )
+          .nonempty()
           .describe('List of items in the order'),
       }),
     },
@@ -121,17 +144,19 @@ export function getMcpServer() {
       }),
   );
 
+  // Delete order by ID
   server.registerTool(
     'delete_order_by_id',
     {
-      description: 'Delete an order by its ID',
+      description: 'Cancel an order if it has not yet been started (status must be "pending", requires userId)',
       inputSchema: z.object({
-        id: z.string().describe('ID of the order to delete'),
+        id: z.string().describe('ID of the order to cancel'),
+        userId: z.string().describe('ID of the user that placed the order'),
       }),
     },
     async (args) =>
       createToolResponse(async () => {
-        return fetchBurgerApi(`/api/orders/${args.id}`, {
+        return fetchBurgerApi(`/api/orders/${args.id}?userId=${args.userId}`, {
           method: 'DELETE',
         });
       }),
@@ -143,9 +168,6 @@ export function getMcpServer() {
 // Wraps standard fetch to include the base URL and handle errors
 async function fetchBurgerApi(url: string, options: RequestInit = {}): Promise<Record<string, any>> {
   const fullUrl = new URL(url, burgerApiUrl).toString();
-  /*
-   This is because MCP servers use standard output (stdout) for sending MCP messages when using the stdio transport, so logging to stdout could interfere with the MCP communication. By using standard error (stderr) for logging, we ensure that our logs don't mix with the MCP messages.
-  */
   console.error(`Fetching ${fullUrl}`);
   try {
     const response = await fetch(fullUrl, {
